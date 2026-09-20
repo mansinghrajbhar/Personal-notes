@@ -15,28 +15,32 @@
         <span class="brand-mark">✓</span>
         <span>Personal Notes</span>
       </div>
-
+      <div class="account-card">
+        <div class="account-avatar" id="accountAvatar">G</div>
+        <div class="account-info">
+          <strong id="accountName">Not signed in</strong>
+          <span id="accountEmail">Sign in to sync</span>
+        </div>
+        <button class="account-btn" id="googleSignInBtn">Sign in with Google</button>
+        <button class="account-btn hidden" id="googleSignOutBtn">Sign out</button>
+      </div>
       <nav class="main-nav">
         <button class="nav-item active" data-view="notes"><span>▱</span> Notes</button>
         <button class="nav-item" data-view="pinned"><span>☆</span> Pinned</button>
         <button class="nav-item" data-view="archive"><span>▤</span> Archive</button>
         <button class="nav-item" data-view="trash"><span>⌫</span> Trash</button>
       </nav>
-
       <div class="section-title">
         <span>Folders</span>
         <button class="small-btn" id="addFolderBtn" title="Create folder">+</button>
       </div>
       <div id="folderTree" class="folder-tree"></div>
-
       <div class="sidebar-bottom">
         <button class="nav-item" id="syncBtn"><span>↻</span> Sync</button>
         <div class="sync-status" id="syncStatus">Local storage</div>
       </div>
     </aside>
-
     <div class="overlay" id="overlay"></div>
-
     <main class="main">
       <header class="topbar">
         <div class="topbar-left">
@@ -53,7 +57,6 @@
           <button class="icon-btn" id="refreshBtn" title="Refresh">⟳</button>
         </div>
       </header>
-
       <div class="sort-menu hidden" id="sortMenu">
         <div class="sort-label">Sort by</div>
         <button data-sort="updatedDesc">Last modified</button>
@@ -62,18 +65,15 @@
         <button data-sort="titleAsc">Title A → Z</button>
         <button data-sort="titleDesc">Title Z → A</button>
       </div>
-
       <section class="content">
         <div class="folder-heading hidden" id="folderHeading"></div>
         <div id="notesGrid" class="notes-grid"></div>
-
         <div class="empty-state hidden" id="emptyState">
           <div class="empty-icon">📝</div>
           <h2 id="emptyTitle">No notes yet</h2>
           <p id="emptyText">Create your first note below.</p>
         </div>
       </section>
-
       <button class="fab" id="newNoteBtn" aria-label="Create note">+</button>
     </main>
   </div>
@@ -104,9 +104,7 @@
     <form method="dialog" id="folderForm">
       <h2>Create folder</h2>
       <input id="folderName" maxlength="60" placeholder="Folder name" required>
-      <select id="parentFolder">
-        <option value="">No parent folder</option>
-      </select>
+      <select id="parentFolder"><option value="">No parent folder</option></select>
       <div class="dialog-actions">
         <button type="button" class="secondary-btn" id="cancelFolder">Cancel</button>
         <button type="submit" class="save-btn">Create</button>
@@ -115,6 +113,8 @@
   </dialog>
 
   <div class="toast" id="toast"></div>
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="app.js"></script>
 </body>
 </html>
