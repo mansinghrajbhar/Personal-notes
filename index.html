@@ -8,6 +8,29 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <section class="welcome-screen" id="welcomeScreen" aria-labelledby="welcomeTitle">
+    <div class="welcome-card">
+      <div class="welcome-logo">✓</div>
+      <h1 id="welcomeTitle">Welcome to Personal Notes</h1>
+      <p class="welcome-subtitle">A simple, private place for your notes, ideas and lists.</p>
+
+      <div class="feature-list">
+        <div class="feature-item"><span>📝</span><div><strong>Quick notes</strong><small>Capture ideas just like a simple notes app.</small></div></div>
+        <div class="feature-item"><span>📁</span><div><strong>Folders & subfolders</strong><small>Keep your notes organized without a complicated workspace.</small></div></div>
+        <div class="feature-item"><span>🔎</span><div><strong>Search & sort</strong><small>Find notes quickly by text, date or title.</small></div></div>
+        <div class="feature-item"><span>☁️</span><div><strong>Google sync</strong><small>Sign in to sync your notes across devices.</small></div></div>
+        <div class="feature-item"><span>↗</span><div><strong>Share notes</strong><small>Share a note using your device's share options.</small></div></div>
+      </div>
+
+      <button class="welcome-google-btn" id="welcomeGoogleBtn">
+        <span class="google-g">G</span>
+        Continue with Google
+      </button>
+      <button class="welcome-skip-btn" id="welcomeSkipBtn">Skip for now</button>
+      <p class="welcome-note">You can continue without an account and use local storage.</p>
+    </div>
+  </section>
+
   <div class="app">
     <aside class="sidebar" id="sidebar">
       <div class="brand">
