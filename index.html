@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#202124">
+  <title>Personal Notes</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <button class="icon-btn mobile-only" id="closeSidebar" aria-label="Close menu">×</button>
+        <span class="brand-mark">✓</span>
+        <span>Personal Notes</span>
+      </div>
+
+      <nav class="main-nav">
+        <button class="nav-item active" data-view="notes"><span>▱</span> Notes</button>
+        <button class="nav-item" data-view="pinned"><span>☆</span> Pinned</button>
+        <button class="nav-item" data-view="archive"><span>▤</span> Archive</button>
+        <button class="nav-item" data-view="trash"><span>⌫</span> Trash</button>
+      </nav>
+
+      <div class="section-title">
+        <span>Folders</span>
+        <button class="small-btn" id="addFolderBtn" title="Create folder">+</button>
+      </div>
+      <div id="folderTree" class="folder-tree"></div>
+
+      <div class="sidebar-bottom">
+        <button class="nav-item" id="syncBtn"><span>↻</span> Sync</button>
+        <div class="sync-status" id="syncStatus">Local storage</div>
+      </div>
+    </aside>
+
+    <div class="overlay" id="overlay"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-btn" id="menuBtn" aria-label="Open menu">☰</button>
+          <h1 id="viewTitle">Notes</h1>
+        </div>
+        <div class="search-wrap">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="Search notes">
+          <button class="clear-search hidden" id="clearSearch">×</button>
+        </div>
+        <div class="top-actions">
+          <button class="icon-btn" id="sortBtn" title="Sort notes">↕</button>
+          <button class="icon-btn" id="refreshBtn" title="Refresh">⟳</button>
+        </div>
+      </header>
+
+      <div class="sort-menu hidden" id="sortMenu">
+        <div class="sort-label">Sort by</div>
+        <button data-sort="updatedDesc">Last modified</button>
+        <button data-sort="createdDesc">Newest first</button>
+        <button data-sort="createdAsc">Oldest first</button>
+        <button data-sort="titleAsc">Title A → Z</button>
+        <button data-sort="titleDesc">Title Z → A</button>
+      </div>
+
+      <section class="content">
+        <div class="folder-heading hidden" id="folderHeading"></div>
+        <div id="notesGrid" class="notes-grid"></div>
+
+        <div class="empty-state hidden" id="emptyState">
+          <div class="empty-icon">📝</div>
+          <h2 id="emptyTitle">No notes yet</h2>
+          <p id="emptyText">Create your first note below.</p>
+        </div>
+      </section>
+
+      <button class="fab" id="newNoteBtn" aria-label="Create note">+</button>
+    </main>
+  </div>
+
+  <dialog class="note-dialog" id="noteDialog">
+    <form method="dialog" id="noteForm">
+      <div class="dialog-header">
+        <input id="noteTitle" maxlength="120" placeholder="Title">
+        <button type="button" class="icon-btn" id="closeNoteDialog">×</button>
+      </div>
+      <textarea id="noteBody" placeholder="Take a note..." maxlength="20000"></textarea>
+      <div class="dialog-toolbar">
+        <div class="dialog-left">
+          <button type="button" class="tool-btn" id="pinBtn">☆ Pin</button>
+          <button type="button" class="tool-btn" id="archiveBtn">▤ Archive</button>
+          <button type="button" class="tool-btn" id="shareBtn">↗ Share</button>
+        </div>
+        <div class="dialog-right">
+          <select id="noteFolder" aria-label="Folder"></select>
+          <button type="button" class="danger-btn hidden" id="deleteNoteBtn">Delete</button>
+          <button type="submit" class="save-btn">Done</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="folder-dialog" id="folderDialog">
+    <form method="dialog" id="folderForm">
+      <h2>Create folder</h2>
+      <input id="folderName" maxlength="60" placeholder="Folder name" required>
+      <select id="parentFolder">
+        <option value="">No parent folder</option>
+      </select>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-btn" id="cancelFolder">Cancel</button>
+        <button type="submit" class="save-btn">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
