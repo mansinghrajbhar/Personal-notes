@@ -1,4 +1,5 @@
 const STORAGE_KEY="personal-notes-v1";
+const WELCOME_KEY="personal-notes-welcome-seen";
 const DRIVE_FILE_NAME="personal-notes.json";
 const DRIVE_SCOPE="https://www.googleapis.com/auth/drive.appdata";
 const USERINFO_URL="https://www.googleapis.com/oauth2/v3/userinfo";
@@ -8,6 +9,8 @@ const uid=p=>p+"-"+Date.now().toString(36)+Math.random().toString(36).slice(2,7)
 const data=()=>({notes:state.notes,folders:state.folders,sort:state.sort});
 function setData(d){state.notes=Array.isArray(d?.notes)?d.notes:[];state.folders=Array.isArray(d?.folders)?d.folders:[];state.sort=d?.sort||"updatedDesc";localStorage.setItem(STORAGE_KEY,JSON.stringify(data()))}
 function load(){try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY));if(d)setData(d)}catch{showToast("Could not load saved notes")}}
+function hideWelcome(){const screen=$("#welcomeScreen");if(screen){screen.classList.add("hidden");localStorage.setItem(WELCOME_KEY,"1")}}
+function showWelcomeIfNeeded(){if(localStorage.getItem(WELCOME_KEY)==="1")hideWelcome()}
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data()));scheduleDriveSync()}
 function esc(v=""){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function folderById(id){return state.folders.find(f=>f.id===id)}
@@ -61,4 +64,8 @@ $("#searchInput").addEventListener("input",e=>{state.search=e.target.value;$("#c
 $("#menuBtn").addEventListener("click",()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")});$("#closeSidebar").addEventListener("click",closeSidebar);$("#overlay").addEventListener("click",closeSidebar);
 $("#googleSignInBtn").addEventListener("click",signInWithGoogle);$("#googleSignOutBtn").addEventListener("click",()=>{clearGoogleSession(true);showToast("Signed out")});$("#syncBtn").addEventListener("click",manualSync);
 document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("#searchInput").focus()}if(e.key==="Escape")$("#sortMenu").classList.add("hidden")});
-load();render();window.addEventListener("load",initGoogle);
+load();render();
+$("#welcomeGoogleBtn").addEventListener("click",async()=>{await signInWithGoogle();if(state.google.user)hideWelcome()});
+$("#welcomeSkipBtn").addEventListener("click",hideWelcome);
+showWelcomeIfNeeded();
+window.addEventListener("load",initGoogle);
