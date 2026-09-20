@@ -1,400 +1,64 @@
-const STORAGE_KEY = "personal-notes-v1";
+const STORAGE_KEY="personal-notes-v1";
+const DRIVE_FILE_NAME="personal-notes.json";
+const DRIVE_SCOPE="https://www.googleapis.com/auth/drive.appdata";
+const USERINFO_URL="https://www.googleapis.com/oauth2/v3/userinfo";
+const state={notes:[],folders:[],view:"notes",folderId:null,search:"",sort:"updatedDesc",editingId:null,google:{accessToken:null,tokenExpiresAt:0,user:null,fileId:null,tokenClient:null,ready:false,syncing:false,syncTimer:null}};
+const $=s=>document.querySelector(s);
+const uid=p=>p+"-"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const data=()=>({notes:state.notes,folders:state.folders,sort:state.sort});
+function setData(d){state.notes=Array.isArray(d?.notes)?d.notes:[];state.folders=Array.isArray(d?.folders)?d.folders:[];state.sort=d?.sort||"updatedDesc";localStorage.setItem(STORAGE_KEY,JSON.stringify(data()))}
+function load(){try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY));if(d)setData(d)}catch{showToast("Could not load saved notes")}}
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data()));scheduleDriveSync()}
+function esc(v=""){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function folderById(id){return state.folders.find(f=>f.id===id)}
+function folderName(id){return folderById(id)?.name||""}
+function descendantIds(id){const ids=[id];let more=true;while(more){more=false;for(const f of state.folders)if(f.parentId&&ids.includes(f.parentId)&&!ids.includes(f.id)){ids.push(f.id);more=true}}return ids}
+function visibleNotes(){let n=[...state.notes];if(state.view==="pinned")n=n.filter(x=>x.pinned&&!x.trashed);else if(state.view==="archive")n=n.filter(x=>x.archived&&!x.trashed);else if(state.view==="trash")n=n.filter(x=>x.trashed);else{n=n.filter(x=>!x.archived&&!x.trashed);if(state.folderId)n=n.filter(x=>descendantIds(state.folderId).includes(x.folderId))}const q=state.search.trim().toLowerCase();if(q)n=n.filter(x=>(x.title+" "+x.body).toLowerCase().includes(q));n.sort((a,b)=>state.sort==="createdAsc"?a.createdAt-b.createdAt:state.sort==="createdDesc"?b.createdAt-a.createdAt:state.sort==="titleAsc"?a.title.localeCompare(b.title):state.sort==="titleDesc"?b.title.localeCompare(a.title):b.updatedAt-a.updatedAt);return n}
+function render(){renderFolders();renderNotes();renderTitle();populateFolders();updateGoogleUI()}
+function renderTitle(){const t={notes:"Notes",pinned:"Pinned",archive:"Archive",trash:"Trash"};$("#viewTitle").textContent=state.folderId&&state.view==="notes"?folderName(state.folderId)||"Notes":t[state.view];document.querySelectorAll(".main-nav .nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===state.view&&!state.folderId))}
+function renderFolders(){const roots=state.folders.filter(f=>!f.parentId);$("#folderTree").innerHTML=roots.map(f=>folderHtml(f,0)).join("")}
+function folderHtml(f,depth){const kids=state.folders.filter(x=>x.parentId===f.id),count=state.notes.filter(n=>n.folderId===f.id&&!n.trashed).length;return `<div><button class="folder-item ${state.folderId===f.id?"active":""}" data-folder="${f.id}" style="padding-left:${8+depth*14}px"><span class="folder-arrow">${kids.length?"▾":"·"}</span><span>📁</span><span class="folder-name">${esc(f.name)}</span><span class="folder-count">${count}</span></button><div class="folder-children">${kids.map(x=>folderHtml(x,depth+1)).join("")}</div></div>`}
+function renderNotes(){const n=visibleNotes();$("#notesGrid").innerHTML=n.map(cardHtml).join("");$("#emptyState").classList.toggle("hidden",n.length>0);if(!n.length){$("#emptyTitle").textContent=state.search?"No matching notes":state.view==="trash"?"Trash is empty":"No notes yet";$("#emptyText").textContent=state.search?"Try another search.":"Create your first note below."}}
+function cardHtml(n){const f=folderName(n.folderId),d=new Date(n.updatedAt).toLocaleDateString(undefined,{month:"short",day:"numeric"});return `<article class="note-card ${n.pinned?"pinned":""}" data-note="${n.id}">${n.title?`<h3>${esc(n.title)}</h3>`:""}<div class="note-body">${esc(n.body)}</div><div class="note-meta">${n.pinned?"<span>📌</span>":""}${f?`<span class="note-folder">${esc(f)}</span>`:""}<span>${d}</span></div><div class="note-actions"><button class="card-btn" data-action="pin">${n.pinned?"Unpin":"Pin"}</button><button class="card-btn" data-action="share">Share</button><button class="card-btn" data-action="delete">${n.trashed?"Delete forever":"Delete"}</button></div></article>`}
+function openNote(id=null){state.editingId=id;const n=id?state.notes.find(x=>x.id===id):null;$("#noteTitle").value=n?.title||"";$("#noteBody").value=n?.body||"";$("#noteFolder").value=n?.folderId||"";$("#pinBtn").textContent=n?.pinned?"★ Unpin":"☆ Pin";$("#archiveBtn").textContent=n?.archived?"▤ Unarchive":"▤ Archive";$("#deleteNoteBtn").classList.toggle("hidden",!n);$("#noteDialog").showModal();setTimeout(()=>$("#noteTitle").focus(),50)}
+function closeNote(){if($("#noteDialog").open)$("#noteDialog").close();state.editingId=null}
+function saveNote(){const title=$("#noteTitle").value.trim(),body=$("#noteBody").value.trim();if(!title&&!body)return closeNote();const now=Date.now();if(state.editingId){const n=state.notes.find(x=>x.id===state.editingId);Object.assign(n,{title,body,folderId:$("#noteFolder").value||null,updatedAt:now})}else state.notes.push({id:uid("note"),title,body,folderId:$("#noteFolder").value||state.folderId||null,pinned:false,archived:false,trashed:false,createdAt:now,updatedAt:now});save();closeNote();render();showToast(state.google.user?"Saved and syncing":"Note saved")}
+function toggle(id,p){const n=state.notes.find(x=>x.id===id);if(!n)return;n[p]=!n[p];n.updatedAt=Date.now();save();render()}
+function removeNote(n){if(!n)return;if(n.trashed){state.notes=state.notes.filter(x=>x.id!==n.id);showToast("Deleted permanently")}else{n.trashed=true;n.archived=false;showToast("Moved to trash")}save();render()}
+async function shareNote(n){const text=[n.title,n.body].filter(Boolean).join("\n\n");try{if(navigator.share)await navigator.share({title:n.title||"Personal Note",text});else{await navigator.clipboard.writeText(text);showToast("Note copied to clipboard")}}catch{}}
+function populateFolders(){const opts="<option value=\"\">No folder</option>"+folderOptions();$("#noteFolder").innerHTML=opts;$("#parentFolder").innerHTML="<option value=\"\">No parent folder</option>"+folderOptions()}
+function folderOptions(parent=null,depth=0){return state.folders.filter(f=>(f.parentId||null)===parent).map(f=>`<option value="${f.id}">${"— ".repeat(depth)}📁 ${esc(f.name)}</option>`+folderOptions(f.id,depth+1)).join("")}
+function createFolder(){const name=$("#folderName").value.trim();if(!name)return;state.folders.push({id:uid("folder"),name,parentId:$("#parentFolder").value||null,createdAt:Date.now()});save();$("#folderDialog").close();$("#folderForm").reset();render();showToast("Folder created")}
+function setView(v,f=null){state.view=v;state.folderId=f;render();if(innerWidth<=900)closeSidebar()}
+function closeSidebar(){$("#sidebar").classList.remove("open");$("#overlay").classList.remove("show")}
+function showToast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove("show"),2600)}
+function setSyncStatus(m){$("#syncStatus").textContent=m}
+function googleConfigured(){return window.GOOGLE_CLIENT_ID&&!window.GOOGLE_CLIENT_ID.includes("YOUR_GOOGLE_CLIENT_ID")}
+function updateGoogleUI(){const u=state.google.user;$("#googleSignInBtn").classList.toggle("hidden",!!u);$("#googleSignOutBtn").classList.toggle("hidden",!u);$("#accountName").textContent=u?.name||"Not signed in";$("#accountEmail").textContent=u?.email||"Sign in to sync";$("#accountAvatar").textContent=u?.name?.trim()?.charAt(0)?.toUpperCase()||"G"}
+function initGoogle(){if(!googleConfigured()){setSyncStatus("Add Google Client ID");return}if(!window.google?.accounts?.oauth2){setTimeout(initGoogle,300);return}state.google.tokenClient=google.accounts.oauth2.initTokenClient({client_id:window.GOOGLE_CLIENT_ID,scope:`openid email profile ${DRIVE_SCOPE}`,callback:googleTokenCallback});state.google.ready=true;setSyncStatus("Google sync ready")}
+async function googleTokenCallback(r){if(r.error){setSyncStatus("Google sign-in failed");showToast("Google sign-in failed or cancelled");return}state.google.accessToken=r.access_token;state.google.tokenExpiresAt=Date.now()+Number(r.expires_in||3600)*1000-60000;try{const profile=await googleApi(USERINFO_URL);state.google.user=profile;setSyncStatus("Syncing with Google Drive…");await initialDriveSync();render()}catch(e){console.error(e);clearGoogleSession(false);setSyncStatus("Google sync failed");showToast(e.message||"Could not connect to Google")}}
+function signInWithGoogle(){if(!googleConfigured())return showToast("Add your Google Client ID in config.js first");if(!state.google.ready){initGoogle();return setTimeout(signInWithGoogle,500)}state.google.tokenClient.requestAccessToken({prompt:"select_account"})}
+function clearGoogleSession(revoke=true){const token=state.google.accessToken;if(revoke&&token&&window.google?.accounts?.oauth2)google.accounts.oauth2.revoke(token,()=>{});state.google.accessToken=null;state.google.tokenExpiresAt=0;state.google.user=null;state.google.fileId=null;setSyncStatus("Local storage");updateGoogleUI()}
+function ensureDriveToken(){if(state.google.accessToken&&Date.now()<state.google.tokenExpiresAt)return Promise.resolve(state.google.accessToken);return new Promise((resolve,reject)=>{if(!state.google.ready)return reject(new Error("Google sign-in is not ready"));state.google.tokenClient.callback=r=>{if(r.error)return reject(new Error("Google authorization failed"));state.google.accessToken=r.access_token;state.google.tokenExpiresAt=Date.now()+Number(r.expires_in||3600)*1000-60000;resolve(r.access_token)};state.google.tokenClient.requestAccessToken({prompt:""})})}
+async function googleApi(url,opt={}){const token=await ensureDriveToken();const res=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:`Bearer ${token}`}});if(!res.ok){const msg=await res.text();if(res.status===401)state.google.accessToken=null;throw new Error(`Google API error ${res.status}: ${msg.slice(0,160)}`)}return res.status===204?null:res.json()}
+async function findDriveFile(){const q=encodeURIComponent(`name = '${DRIVE_FILE_NAME}' and trashed = false`);const r=await googleApi(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name,modifiedTime)&pageSize=10`);return r.files?.[0]||null}
+async function readDriveFile(id){return googleApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`)}
+async function createDriveFile(){const r=await googleApi("https://www.googleapis.com/drive/v3/files?fields=id",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:DRIVE_FILE_NAME,mimeType:"application/json",parents:["appDataFolder"]})});return r.id}
+async function uploadDriveData(id,d){if(!id)id=await createDriveFile();const token=await ensureDriveToken();const r=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(d)});if(!r.ok)throw new Error("Could not save notes to Google Drive");return id}
+async function initialDriveSync(){if(state.google.syncing)return;state.google.syncing=true;try{const remote=await findDriveFile();const localHasData=state.notes.length||state.folders.length;if(remote){state.google.fileId=remote.id;const d=await readDriveFile(remote.id);if(d?.notes||d?.folders)setData(d);setSyncStatus("Synced with Google Drive")}else{state.google.fileId=await uploadDriveData(null,data());setSyncStatus(localHasData?"Backed up to Google Drive":"Google Drive sync enabled")}}finally{state.google.syncing=false}}
+function scheduleDriveSync(){if(!state.google.user||!state.google.accessToken||state.google.syncing)return;clearTimeout(state.google.syncTimer);state.google.syncTimer=setTimeout(syncToDrive,900)}
+async function syncToDrive(){if(!state.google.user||state.google.syncing)return;state.google.syncing=true;try{setSyncStatus("Saving to Google Drive…");state.google.fileId=state.google.fileId||((await findDriveFile())?.id);state.google.fileId=await uploadDriveData(state.google.fileId,data());setSyncStatus("Synced with Google Drive")}catch(e){console.error(e);setSyncStatus("Sync error");showToast("Google Drive sync failed")}finally{state.google.syncing=false}}
+async function manualSync(){if(!state.google.user)return showToast("Sign in with Google to sync");await syncToDrive();showToast("Google Drive sync complete")}
 
-const state = {
-  notes: [],
-  folders: [],
-  view: "notes",
-  folderId: null,
-  search: "",
-  sort: "updatedDesc",
-  editingId: null
-};
-
-const $ = (selector) => document.querySelector(selector);
-
-function uid(prefix = "id") {
-  return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-function load() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved) {
-      state.notes = Array.isArray(saved.notes) ? saved.notes : [];
-      state.folders = Array.isArray(saved.folders) ? saved.folders : [];
-      state.sort = saved.sort || "updatedDesc";
-    }
-  } catch {
-    showToast("Could not load saved notes");
-  }
-}
-
-function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    notes: state.notes,
-    folders: state.folders,
-    sort: state.sort
-  }));
-}
-
-function escapeHtml(value = "") {
-  return String(value).replace(/[&<>"']/g, c => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
-  }[c]));
-}
-
-function folderById(id) {
-  return state.folders.find(f => f.id === id);
-}
-
-function folderName(id) {
-  return folderById(id)?.name || "";
-}
-
-function descendantFolderIds(id) {
-  const ids = [id];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const folder of state.folders) {
-      if (folder.parentId && ids.includes(folder.parentId) && !ids.includes(folder.id)) {
-        ids.push(folder.id);
-        changed = true;
-      }
-    }
-  }
-  return ids;
-}
-
-function visibleNotes() {
-  let notes = [...state.notes];
-
-  if (state.view === "pinned") notes = notes.filter(n => n.pinned && !n.trashed);
-  else if (state.view === "archive") notes = notes.filter(n => n.archived && !n.trashed);
-  else if (state.view === "trash") notes = notes.filter(n => n.trashed);
-  else {
-    notes = notes.filter(n => !n.archived && !n.trashed);
-    if (state.folderId) {
-      const ids = descendantFolderIds(state.folderId);
-      notes = notes.filter(n => ids.includes(n.folderId));
-    }
-  }
-
-  const query = state.search.trim().toLowerCase();
-  if (query) {
-    notes = notes.filter(n =>
-      (n.title + " " + n.body).toLowerCase().includes(query)
-    );
-  }
-
-  notes.sort((a, b) => {
-    switch (state.sort) {
-      case "createdAsc": return a.createdAt - b.createdAt;
-      case "createdDesc": return b.createdAt - a.createdAt;
-      case "titleAsc": return a.title.localeCompare(b.title);
-      case "titleDesc": return b.title.localeCompare(a.title);
-      default: return b.updatedAt - a.updatedAt;
-    }
-  });
-  return notes;
-}
-
-function render() {
-  renderFolderTree();
-  renderNotes();
-  renderViewTitle();
-  populateFolderSelects();
-}
-
-function renderViewTitle() {
-  const titles = { notes: "Notes", pinned: "Pinned", archive: "Archive", trash: "Trash" };
-  $("#viewTitle").textContent = state.folderId && state.view === "notes"
-    ? folderName(state.folderId) || "Notes"
-    : titles[state.view];
-  document.querySelectorAll(".main-nav .nav-item").forEach(btn =>
-    btn.classList.toggle("active", btn.dataset.view === state.view && !state.folderId)
-  );
-}
-
-function renderFolderTree() {
-  const root = state.folders.filter(f => !f.parentId);
-  $("#folderTree").innerHTML = root.map(f => renderFolder(f, 0)).join("");
-}
-
-function renderFolder(folder, depth) {
-  const children = state.folders.filter(f => f.parentId === folder.id);
-  const count = state.notes.filter(n => n.folderId === folder.id && !n.trashed).length;
-  return `
-    <div>
-      <button class="folder-item ${state.folderId === folder.id ? "active" : ""}" data-folder="${folder.id}" style="padding-left:${8 + depth * 14}px">
-        <span class="folder-arrow">${children.length ? "▾" : "·"}</span>
-        <span>📁</span>
-        <span class="folder-name">${escapeHtml(folder.name)}</span>
-        <span class="folder-count">${count}</span>
-      </button>
-      <div class="folder-children">
-        ${children.map(child => renderFolder(child, depth + 1)).join("")}
-      </div>
-    </div>`;
-}
-
-function renderNotes() {
-  const notes = visibleNotes();
-  const grid = $("#notesGrid");
-  grid.innerHTML = notes.map(renderCard).join("");
-  $("#emptyState").classList.toggle("hidden", notes.length > 0);
-  if (!notes.length) {
-    $("#emptyTitle").textContent = state.search ? "No matching notes" :
-      state.view === "trash" ? "Trash is empty" : "No notes yet";
-    $("#emptyText").textContent = state.search ? "Try another search." : "Create your first note below.";
-  }
-}
-
-function renderCard(note) {
-  const folder = folderName(note.folderId);
-  const date = new Date(note.updatedAt).toLocaleDateString(undefined, { month:"short", day:"numeric" });
-  return `
-    <article class="note-card ${note.pinned ? "pinned" : ""}" data-note="${note.id}">
-      ${note.title ? `<h3>${escapeHtml(note.title)}</h3>` : ""}
-      <div class="note-body">${escapeHtml(note.body)}</div>
-      <div class="note-meta">
-        ${note.pinned ? "<span>📌</span>" : ""}
-        ${folder ? `<span class="note-folder">${escapeHtml(folder)}</span>` : ""}
-        <span>${date}</span>
-      </div>
-      <div class="note-actions">
-        <button class="card-btn" data-action="pin">${note.pinned ? "Unpin" : "Pin"}</button>
-        <button class="card-btn" data-action="share">Share</button>
-        <button class="card-btn" data-action="delete">${note.trashed ? "Delete forever" : "Delete"}</button>
-      </div>
-    </article>`;
-}
-
-function openNote(id = null) {
-  state.editingId = id;
-  const note = id ? state.notes.find(n => n.id === id) : null;
-  $("#noteTitle").value = note?.title || "";
-  $("#noteBody").value = note?.body || "";
-  $("#noteFolder").value = note?.folderId || "";
-  $("#pinBtn").textContent = note?.pinned ? "★ Unpin" : "☆ Pin";
-  $("#archiveBtn").textContent = note?.archived ? "▤ Unarchive" : "▤ Archive";
-  $("#deleteNoteBtn").classList.toggle("hidden", !note);
-  $("#noteDialog").showModal();
-  setTimeout(() => $("#noteTitle").focus(), 50);
-}
-
-function closeNote() {
-  $("#noteDialog").close();
-  state.editingId = null;
-}
-
-function saveNoteFromDialog() {
-  const title = $("#noteTitle").value.trim();
-  const body = $("#noteBody").value.trim();
-  if (!title && !body) {
-    closeNote();
-    return;
-  }
-
-  const now = Date.now();
-  if (state.editingId) {
-    const note = state.notes.find(n => n.id === state.editingId);
-    Object.assign(note, { title, body, folderId: $("#noteFolder").value || null, updatedAt: now });
-  } else {
-    state.notes.push({
-      id: uid("note"), title, body,
-      folderId: $("#noteFolder").value || state.folderId || null,
-      pinned: false, archived: false, trashed: false,
-      createdAt: now, updatedAt: now
-    });
-  }
-  save();
-  closeNote();
-  render();
-  showToast("Note saved");
-}
-
-function toggleNoteProperty(id, property) {
-  const note = state.notes.find(n => n.id === id);
-  if (!note) return;
-  note[property] = !note[property];
-  note.updatedAt = Date.now();
-  save();
-  render();
-}
-
-function deleteNote(note) {
-  if (!note) return;
-  if (note.trashed) {
-    state.notes = state.notes.filter(n => n.id !== note.id);
-    showToast("Note deleted permanently");
-  } else {
-    note.trashed = true;
-    note.archived = false;
-    showToast("Moved to trash");
-  }
-  save();
-  render();
-}
-
-async function shareNote(note) {
-  const text = [note.title, note.body].filter(Boolean).join("\n\n");
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: note.title || "Personal Note", text });
-    } catch {}
-  } else if (navigator.clipboard) {
-    await navigator.clipboard.writeText(text);
-    showToast("Note copied to clipboard");
-  } else {
-    showToast("Sharing is not supported here");
-  }
-}
-
-function populateFolderSelects() {
-  const options = `<option value="">No folder</option>` + buildFolderOptions();
-  $("#noteFolder").innerHTML = options;
-  $("#parentFolder").innerHTML = `<option value="">No parent folder</option>` + buildFolderOptions();
-}
-
-function buildFolderOptions(parent = null, depth = 0) {
-  return state.folders
-    .filter(f => (f.parentId || null) === parent)
-    .map(f => `<option value="${f.id}">${"— ".repeat(depth)}📁 ${escapeHtml(f.name)}</option>` +
-      buildFolderOptions(f.id, depth + 1)).join("");
-}
-
-function createFolder() {
-  const name = $("#folderName").value.trim();
-  if (!name) return;
-  state.folders.push({
-    id: uid("folder"),
-    name,
-    parentId: $("#parentFolder").value || null,
-    createdAt: Date.now()
-  });
-  save();
-  $("#folderDialog").close();
-  $("#folderForm").reset();
-  render();
-  showToast("Folder created");
-}
-
-function setView(view, folderId = null) {
-  state.view = view;
-  state.folderId = folderId;
-  render();
-  if (window.innerWidth <= 900) closeSidebar();
-}
-
-function closeSidebar() {
-  $("#sidebar").classList.remove("open");
-  $("#overlay").classList.remove("show");
-}
-
-function showToast(message) {
-  const toast = $("#toast");
-  toast.textContent = message;
-  toast.classList.add("show");
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toast.classList.remove("show"), 2200);
-}
-
-document.addEventListener("click", async (event) => {
-  const nav = event.target.closest("[data-view]");
-  if (nav) setView(nav.dataset.view);
-
-  const folder = event.target.closest("[data-folder]");
-  if (folder) setView("notes", folder.dataset.folder);
-
-  const card = event.target.closest(".note-card");
-  if (card) {
-    const action = event.target.closest("[data-action]")?.dataset.action;
-    const note = state.notes.find(n => n.id === card.dataset.note);
-    if (!action) openNote(note.id);
-    else if (action === "pin") toggleNoteProperty(note.id, "pinned");
-    else if (action === "share") shareNote(note);
-    else if (action === "delete") deleteNote(note);
-  }
-
-  const sort = event.target.closest("[data-sort]");
-  if (sort) {
-    state.sort = sort.dataset.sort;
-    $("#sortMenu").classList.add("hidden");
-    save(); renderNotes();
-  }
-});
-
-$("#newNoteBtn").addEventListener("click", () => openNote());
-$("#closeNoteDialog").addEventListener("click", closeNote);
-$("#noteForm").addEventListener("submit", event => {
-  event.preventDefault();
-  saveNoteFromDialog();
-});
-$("#pinBtn").addEventListener("click", () => {
-  if (!state.editingId) return;
-  toggleNoteProperty(state.editingId, "pinned");
-  const note = state.notes.find(n => n.id === state.editingId);
-  $("#pinBtn").textContent = note?.pinned ? "★ Unpin" : "☆ Pin";
-});
-$("#archiveBtn").addEventListener("click", () => {
-  if (!state.editingId) return;
-  toggleNoteProperty(state.editingId, "archived");
-  const note = state.notes.find(n => n.id === state.editingId);
-  $("#archiveBtn").textContent = note?.archived ? "▤ Unarchive" : "▤ Archive";
-});
-$("#deleteNoteBtn").addEventListener("click", () => {
-  const note = state.notes.find(n => n.id === state.editingId);
-  deleteNote(note);
-  closeNote();
-});
-$("#shareBtn").addEventListener("click", () => {
-  const note = state.notes.find(n => n.id === state.editingId);
-  if (note) shareNote(note);
-});
-$("#addFolderBtn").addEventListener("click", () => {
-  populateFolderSelects();
-  $("#folderDialog").showModal();
-  $("#folderName").focus();
-});
-$("#cancelFolder").addEventListener("click", () => $("#folderDialog").close());
-$("#folderForm").addEventListener("submit", event => {
-  event.preventDefault();
-  createFolder();
-});
-$("#sortBtn").addEventListener("click", () => $("#sortMenu").classList.toggle("hidden"));
-$("#refreshBtn").addEventListener("click", () => { render(); showToast("Notes refreshed"); });
-$("#searchInput").addEventListener("input", event => {
-  state.search = event.target.value;
-  $("#clearSearch").classList.toggle("hidden", !state.search);
-  renderNotes();
-});
-$("#clearSearch").addEventListener("click", () => {
-  $("#searchInput").value = "";
-  state.search = "";
-  $("#clearSearch").classList.add("hidden");
-  renderNotes();
-});
-$("#menuBtn").addEventListener("click", () => {
-  $("#sidebar").classList.add("open");
-  $("#overlay").classList.add("show");
-});
-$("#closeSidebar").addEventListener("click", closeSidebar);
-$("#overlay").addEventListener("click", closeSidebar);
-
-$("#syncBtn").addEventListener("click", () => {
-  showToast("Google sync will be connected in the next phase");
-});
-
-document.addEventListener("keydown", event => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    $("#searchInput").focus();
-  }
-  if (event.key === "Escape") {
-    $("#sortMenu").classList.add("hidden");
-  }
-});
-
-load();
-render();
+document.addEventListener("click",e=>{const nav=e.target.closest("[data-view]");if(nav)setView(nav.dataset.view);const f=e.target.closest("[data-folder]");if(f)setView("notes",f.dataset.folder);const card=e.target.closest(".note-card");if(card){const a=e.target.closest("[data-action]")?.dataset.action,n=state.notes.find(x=>x.id===card.dataset.note);if(!a)openNote(n.id);else if(a==="pin")toggle(n.id,"pinned");else if(a==="share")shareNote(n);else if(a==="delete")removeNote(n)}const s=e.target.closest("[data-sort]");if(s){state.sort=s.dataset.sort;$("#sortMenu").classList.add("hidden");save();renderNotes()}});
+$("#newNoteBtn").addEventListener("click",()=>openNote());$("#closeNoteDialog").addEventListener("click",closeNote);$("#noteForm").addEventListener("submit",e=>{e.preventDefault();saveNote()});
+$("#pinBtn").addEventListener("click",()=>{if(state.editingId){toggle(state.editingId,"pinned");const n=state.notes.find(x=>x.id===state.editingId);$("#pinBtn").textContent=n?.pinned?"★ Unpin":"☆ Pin"}});
+$("#archiveBtn").addEventListener("click",()=>{if(state.editingId){toggle(state.editingId,"archived");const n=state.notes.find(x=>x.id===state.editingId);$("#archiveBtn").textContent=n?.archived?"▤ Unarchive":"▤ Archive"}});
+$("#deleteNoteBtn").addEventListener("click",()=>{removeNote(state.notes.find(x=>x.id===state.editingId));closeNote()});$("#shareBtn").addEventListener("click",()=>{const n=state.notes.find(x=>x.id===state.editingId);if(n)shareNote(n)});
+$("#addFolderBtn").addEventListener("click",()=>{$("#folderDialog").showModal();$("#folderName").focus()});$("#cancelFolder").addEventListener("click",()=>$("#folderDialog").close());$("#folderForm").addEventListener("submit",e=>{e.preventDefault();createFolder()});
+$("#sortBtn").addEventListener("click",()=>$("#sortMenu").classList.toggle("hidden"));$("#refreshBtn").addEventListener("click",()=>{render();showToast("Notes refreshed")});
+$("#searchInput").addEventListener("input",e=>{state.search=e.target.value;$("#clearSearch").classList.toggle("hidden",!state.search);renderNotes()});$("#clearSearch").addEventListener("click",()=>{$("#searchInput").value="";state.search="";$("#clearSearch").classList.add("hidden");renderNotes()});
+$("#menuBtn").addEventListener("click",()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")});$("#closeSidebar").addEventListener("click",closeSidebar);$("#overlay").addEventListener("click",closeSidebar);
+$("#googleSignInBtn").addEventListener("click",signInWithGoogle);$("#googleSignOutBtn").addEventListener("click",()=>{clearGoogleSession(true);showToast("Signed out")});$("#syncBtn").addEventListener("click",manualSync);
+document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("#searchInput").focus()}if(e.key==="Escape")$("#sortMenu").classList.add("hidden")});
+load();render();window.addEventListener("load",initGoogle);
